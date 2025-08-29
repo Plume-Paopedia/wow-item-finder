@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';

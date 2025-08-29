@@ -1,3 +1,4 @@
+import React from 'react';
 import { WoWItem, mockSources } from '@/lib/data';
 import { ItemSource } from '@/lib/data';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';

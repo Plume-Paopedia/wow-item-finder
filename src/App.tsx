@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { mockItems, WoWItem } from '@/lib/data';
 import { SearchBar } from '@/components/SearchBar';
 import { ItemCard } from '@/components/ItemCard';
 import { ItemDetail } from '@/components/ItemDetail';
 import { SearchHistory } from '@/components/SearchHistory';
+import { Toaster } from '@/components/ui/sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function App() {
@@ -158,6 +159,8 @@ function App() {
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
       />
+      
+      <Toaster />
     </div>
   );
 }
