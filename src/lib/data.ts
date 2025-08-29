@@ -141,6 +141,42 @@ export const mockItems: WoWItem[] = [
       { name: "Intellect", value: 67 },
       { name: "Mana", value: 890 }
     ]
+  },
+  {
+    id: 9,
+    name: "Fluide fluorescent",
+    quality: "common",
+    item_level: 1,
+    required_level: 1,
+    item_class: "Divers",
+    item_subclass: "Composant d'artisanat",
+    icon: "https://wow.zamimg.com/images/wow/icons/large/inv_misc_ahnqirajtrinket_02.jpg",
+    description: "Un fluide étrange qui émet une lueur verte mystérieuse.",
+    stats: []
+  },
+  {
+    id: 10,
+    name: "Essence lumineuse",
+    quality: "uncommon",
+    item_level: 35,
+    required_level: 25,
+    item_class: "Divers",
+    item_subclass: "Enchantement",
+    icon: "https://wow.zamimg.com/images/wow/icons/large/inv_enchant_essencearcanelarge.jpg",
+    description: "Une essence magique qui pulse d'une lumière dorée.",
+    stats: []
+  },
+  {
+    id: 11,
+    name: "Cristal de mana",
+    quality: "rare",
+    item_level: 60,
+    required_level: 40,
+    item_class: "Divers",
+    item_subclass: "Pierre de gemme",
+    icon: "https://wow.zamimg.com/images/wow/icons/large/inv_misc_gem_crystal_02.jpg",
+    description: "Un cristal bleu translucide qui vibre de pouvoir magique.",
+    stats: []
   }
 ];
 
@@ -174,5 +210,17 @@ export const mockSources: Record<number, ItemSource[]> = {
   8: [
     { type: "drop", name: "Boss de donjon", location: "Profondeurs de Rochenoire" },
     { type: "vendor", name: "Bibliothécaire", location: "Dalaran" }
+  ],
+  9: [
+    { type: "drop", name: "Créatures radioactives", location: "Gnomeregan" },
+    { type: "craft", name: "Alchimiste", location: "Recette spéciale" }
+  ],
+  10: [
+    { type: "craft", name: "Enchanteur", location: "Désenchantement d'objets magiques" },
+    { type: "vendor", name: "Marchand d'enchantement", location: "Dalaran" }
+  ],
+  11: [
+    { type: "drop", name: "Élémentaires d'arcane", location: "Île de Quel'Danas" },
+    { type: "craft", name: "Joaillier", location: "Prospection de minerais" }
   ]
 };
