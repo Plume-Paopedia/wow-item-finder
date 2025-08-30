@@ -1,12 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useKV } from '@github/spark/hooks';
-import { mockItems, WoWItem } from '@/lib/data';
+import { WoWItem } from '@/lib/data';
+import { wowheadAPI } from '@/lib/wowhead-api';
 import { SearchBar } from '@/components/SearchBar';
 import { ItemCard } from '@/components/ItemCard';
 import { ItemDetail } from '@/components/ItemDetail';
 import { SearchHistory } from '@/components/SearchHistory';
 import { FilterPanel, FilterState } from '@/components/FilterPanel';
 import { FavoritesList } from '@/components/FavoritesList';
+import { ApiStatus } from '@/components/ApiStatus';
 import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
@@ -20,6 +22,10 @@ function App() {
   const [searchHistory, setSearchHistory] = useKV<WoWItem[]>('wow-search-history', []);
   const [favorites, setFavorites] = useKV<WoWItem[]>('wow-favorites', []);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<WoWItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalItemsCount, setTotalItemsCount] = useState(0);
+  const [isApiConnected, setIsApiConnected] = useState(true);
   
   const [filters, setFilters] = useState<FilterState>({
     quality: [],
@@ -30,20 +36,50 @@ function App() {
     maxItemLevel: 350
   });
 
+  // Debounced search function
+  const performSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const results = await wowheadAPI.searchItems(query, 100);
+      setSearchResults(results);
+      setTotalItemsCount(results.length);
+      setIsApiConnected(!wowheadAPI.isInFallbackMode());
+      
+      if (results.length === 0) {
+        toast.info(`Aucun objet trouvé pour "${query}"`);
+      } else if (wowheadAPI.isInFallbackMode()) {
+        toast.warning(`${results.length} objet${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''} (mode hors ligne)`);
+      } else {
+        toast.success(`${results.length} objet${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''}`);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      setIsApiConnected(false);
+      toast.error('Erreur lors de la recherche - utilisation du mode hors ligne');
+      setSearchResults([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Effect to perform search when query changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      performSearch(searchQuery);
+    }, 500); // 500ms delay for debouncing
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, performSearch]);
+
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim() && activeTab === 'search') return [];
     
-    let items = mockItems;
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      items = items.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.item_class.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.item_subclass.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-    }
+    let items = searchResults;
 
     // Apply quality filter
     if (filters.quality.length > 0) {
@@ -64,7 +100,7 @@ function App() {
     );
 
     return items;
-  }, [searchQuery, filters, activeTab]);
+  }, [searchResults, filters, activeTab, searchQuery]);
 
   const handleItemSelect = (item: WoWItem) => {
     setSelectedItem(item);
@@ -131,9 +167,11 @@ function App() {
             <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent mb-4">
               WoW Item Finder
             </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-4">
               Découvrez tous les objets de World of Warcraft avec leurs sources et statistiques détaillées.
             </p>
+            
+            <ApiStatus isConnected={isApiConnected} itemCount={totalItemsCount} />
           </motion.div>
           
           <SearchBar onSearch={setSearchQuery} />
@@ -151,7 +189,7 @@ function App() {
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'search' | 'favorites')}>
             <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
               <TabsTrigger value="search">
-                Recherche ({mockItems.length.toLocaleString()} objets)
+                Recherche ({isLoading ? '...' : totalItemsCount.toLocaleString()} objets)
               </TabsTrigger>
               <TabsTrigger value="favorites">
                 Favoris ({favorites.length})
@@ -168,7 +206,25 @@ function App() {
               />
 
               <AnimatePresence mode="wait">
-                {showResults && (
+                {isLoading && (
+                  <motion.div
+                    key="loading"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-center py-12"
+                  >
+                    <div className="animate-spin text-6xl mb-4">⚔️</div>
+                    <h3 className="text-xl font-semibold text-muted-foreground mb-2">
+                      Recherche en cours...
+                    </h3>
+                    <p className="text-muted-foreground">
+                      Exploration de la base de données Wowhead
+                    </p>
+                  </motion.div>
+                )}
+
+                {!isLoading && showResults && (
                   <motion.div
                     key="results"
                     initial={{ opacity: 0 }}
@@ -200,7 +256,23 @@ function App() {
                       ))}
                     </div>
                     
-                    {filteredItems.length === 0 && (
+                    {filteredItems.length === 0 && searchResults.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-center py-12"
+                      >
+                        <div className="text-6xl mb-4">🔧</div>
+                        <h3 className="text-xl font-semibold text-muted-foreground mb-2">
+                          Aucun objet ne correspond aux filtres
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Ajustez les filtres pour voir plus de résultats.
+                        </p>
+                      </motion.div>
+                    )}
+
+                    {filteredItems.length === 0 && searchResults.length === 0 && searchQuery.trim() && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -211,14 +283,14 @@ function App() {
                           Aucun objet trouvé
                         </h3>
                         <p className="text-muted-foreground">
-                          Essayez de modifier votre recherche ou d'ajuster les filtres.
+                          Essayez de modifier votre recherche. Utilisez des termes plus généraux ou en français.
                         </p>
                       </motion.div>
                     )}
                   </motion.div>
                 )}
 
-                {showHistory && (
+                {!isLoading && showHistory && (
                   <motion.div
                     key="history"
                     initial={{ opacity: 0 }}
@@ -234,7 +306,7 @@ function App() {
                   </motion.div>
                 )}
 
-                {!showResults && !showHistory && (
+                {!isLoading && !showResults && !showHistory && (
                   <motion.div
                     key="welcome"
                     initial={{ opacity: 0 }}
@@ -250,6 +322,18 @@ function App() {
                       Tapez le nom d'un objet, une classe d'équipement ou un type pour découvrir 
                       toutes les informations dont vous avez besoin.
                     </p>
+                    <div className="mt-6 flex flex-wrap gap-2 justify-center">
+                      <span className="text-xs text-muted-foreground">Exemples :</span>
+                      {['fluide fluorescent', 'épée', 'armure', 'potion', 'anneau'].map((example) => (
+                        <button
+                          key={example}
+                          onClick={() => setSearchQuery(example)}
+                          className="px-3 py-1 bg-muted hover:bg-muted/80 rounded-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {example}
+                        </button>
+                      ))}
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>

@@ -23,10 +23,14 @@
 
 ## Essential Features
 
-### Base de données complète (500+ objets)
-- **Functionality**: Collection exhaustive couvrant tous les types d'objets WoW authentiques
-- **Purpose**: Fournir une expérience de recherche riche et représentative
-- **Success Criteria**: Couverture de toutes les qualités d'objets et catégories principales
+### Base de données complète via Wowhead API
+- **Functionality**: Intégration avec l'API Wowhead pour accéder à la base de données complète des objets WoW (des milliers d'objets)
+- **Purpose**: Fournir une expérience de recherche exhaustive avec tous les objets du jeu, y compris les plus récents
+- **Success Criteria**: 
+  - Recherche en temps réel avec résultats instantanés
+  - Couverture complète de tous les objets WoW disponibles
+  - Cache intelligent pour optimiser les performances
+  - Fallback gracieux en cas d'indisponibilité de l'API
 
 ### Système de filtres avancés
 - **Functionality**: Filtrage par qualité, type d'objet, niveau requis, et niveau d'objet
