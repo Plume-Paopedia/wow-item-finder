@@ -22,4 +22,18 @@ export default defineConfig({
       '@': resolve(projectRoot, 'src')
     }
   },
+  server: {
+    port: 5000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('API proxy error - using development mode with direct API calls:', err.message);
+          });
+        },
+      },
+    },
+  },
 });

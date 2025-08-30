@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { WoWItem } from '@/lib/data';
-import { simulatedBlizzardAPI } from '@/lib/simulated-api';
-import '@/lib/api-router'; // Initialize API routing
+import { enhancedBlizzardAPI } from '@/lib/enhanced-blizzard-api'; // Enhanced API with Blizzard integration
 import { SearchBar } from '@/components/SearchBar';
 import { ItemCard } from '@/components/ItemCard';
 import { ItemDetail } from '@/components/ItemDetail';
@@ -10,12 +9,16 @@ import { SearchHistory } from '@/components/SearchHistory';
 import { FilterPanel, FilterState } from '@/components/FilterPanel';
 import { FavoritesList } from '@/components/FavoritesList';
 import { ApiStatus } from '@/components/ApiStatus';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Toaster } from '@/components/ui/sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LocaleProvider, useLocale } from '@/hooks/useLocale';
+import { getTranslation } from '@/lib/localization';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
-function App() {
+function AppContent() {
+  const { locale } = useLocale();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<WoWItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -27,6 +30,25 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [totalItemsCount, setTotalItemsCount] = useState(0);
   const [isApiConnected, setIsApiConnected] = useState(true);
+
+  // Initialize total items count on component mount
+  useEffect(() => {
+    const initializeItemCount = async () => {
+      try {
+        // Try to get total count from API, fallback to local data count
+        const allItems = await enhancedBlizzardAPI.searchItems('', 1000, locale);
+        setTotalItemsCount(allItems.length);
+        setIsApiConnected(!enhancedBlizzardAPI.isInFallbackMode());
+      } catch (error) {
+        console.error('Failed to initialize item count:', error);
+        // If API fails, we know we have the local database with ~134 items
+        setTotalItemsCount(134);
+        setIsApiConnected(false);
+      }
+    };
+
+    initializeItemCount();
+  }, [locale]);
   
   const [filters, setFilters] = useState<FilterState>({
     quality: [],
@@ -46,27 +68,26 @@ function App() {
 
     setIsLoading(true);
     try {
-      const results = await simulatedBlizzardAPI.searchItems(query, 100);
+      const results = await enhancedBlizzardAPI.searchItems(query, 100, locale);
       setSearchResults(results);
-      setTotalItemsCount(results.length);
-      setIsApiConnected(!simulatedBlizzardAPI.isInFallbackMode());
+      setIsApiConnected(!enhancedBlizzardAPI.isInFallbackMode());
       
       if (results.length === 0) {
-        toast.info(`Aucun objet trouvé pour "${query}"`);
-      } else if (simulatedBlizzardAPI.isInFallbackMode()) {
-        toast.warning(`${results.length} objet${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''} (mode hors ligne)`);
+        toast.info(getTranslation('noResults', locale));
+      } else if (enhancedBlizzardAPI.isInFallbackMode()) {
+        toast.warning(`${results.length} ${getTranslation('itemsFound', locale, results.length)} (${getTranslation('apiDisconnected', locale)})`);
       } else {
-        toast.success(`${results.length} objet${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''}`);
+        toast.success(getTranslation('itemsFound', locale, results.length));
       }
     } catch (error) {
       console.error('Search error:', error);
       setIsApiConnected(false);
-      toast.error('Erreur lors de la recherche - utilisation du mode hors ligne');
+      toast.error(`Erreur lors de la recherche - ${getTranslation('apiDisconnected', locale)}`);
       setSearchResults([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   // Effect to perform search when query changes
   useEffect(() => {
@@ -119,10 +140,10 @@ function App() {
       const isFavorite = currentFavorites.some(fav => fav.id === item.id);
       
       if (isFavorite) {
-        toast.success(`${item.name} retiré des favoris`);
+        toast.success(getTranslation('removedFromFavorites', locale, item.name));
         return currentFavorites.filter(fav => fav.id !== item.id);
       } else {
-        toast.success(`${item.name} ajouté aux favoris`);
+        toast.success(getTranslation('addedToFavorites', locale, item.name));
         return [item, ...currentFavorites];
       }
     });
@@ -132,7 +153,7 @@ function App() {
     setFavorites(currentFavorites => {
       const item = currentFavorites.find(fav => fav.id === itemId);
       if (item) {
-        toast.success(`${item.name} retiré des favoris`);
+        toast.success(getTranslation('removedFromFavorites', locale, item.name));
       }
       return currentFavorites.filter(fav => fav.id !== itemId);
     });
@@ -140,12 +161,12 @@ function App() {
 
   const handleClearHistory = () => {
     setSearchHistory([]);
-    toast.success('Historique effacé');
+    toast.success(getTranslation('historyCleared', locale));
   };
 
   const handleClearFavorites = () => {
     setFavorites([]);
-    toast.success('Favoris effacés');
+    toast.success(getTranslation('favoritesCleared', locale));
   };
 
   const isFavorite = (item: WoWItem) => favorites.some(fav => fav.id === item.id);
@@ -165,11 +186,17 @@ function App() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center mb-8"
           >
+            <div className="flex justify-end mb-4">
+              <LanguageSwitcher />
+            </div>
             <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent mb-4">
               WoW Item Finder
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-4">
-              Découvrez tous les objets de World of Warcraft avec leurs sources et statistiques détaillées.
+              {locale === 'fr_FR' 
+                ? 'Découvrez tous les objets de World of Warcraft avec leurs sources et statistiques détaillées.'
+                : 'Discover all World of Warcraft items with their sources and detailed statistics.'
+              }
             </p>
             
             <ApiStatus isConnected={isApiConnected} itemCount={totalItemsCount} />
@@ -190,10 +217,10 @@ function App() {
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'search' | 'favorites')}>
             <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
               <TabsTrigger value="search">
-                Recherche ({isLoading ? '...' : totalItemsCount.toLocaleString()} objets)
+                {getTranslation('search', locale)} ({isLoading ? '...' : (searchQuery.trim() ? filteredItems.length : 0)} objets)
               </TabsTrigger>
               <TabsTrigger value="favorites">
-                Favoris ({favorites.length})
+                {getTranslation('favorites', locale)} ({favorites.length})
               </TabsTrigger>
             </TabsList>
 
@@ -217,10 +244,13 @@ function App() {
                   >
                     <div className="animate-spin text-6xl mb-4">⚔️</div>
                     <h3 className="text-xl font-semibold text-muted-foreground mb-2">
-                      Recherche en cours...
+                      {getTranslation('loading', locale)}
                     </h3>
                     <p className="text-muted-foreground">
-                      Exploration de la base de données Blizzard Battle.net
+                      {locale === 'fr_FR' 
+                        ? 'Exploration de la base de données Blizzard Battle.net'
+                        : 'Exploring Blizzard Battle.net database'
+                      }
                     </p>
                   </motion.div>
                 )}
@@ -235,7 +265,7 @@ function App() {
                   >
                     <div className="flex items-center justify-between">
                       <h2 className="text-xl font-semibold">
-                        {filteredItems.length} résultat{filteredItems.length !== 1 ? 's' : ''} trouvé{filteredItems.length !== 1 ? 's' : ''}
+                        {getTranslation('itemsFound', locale, filteredItems.length)}
                       </h2>
                     </div>
                     
@@ -367,6 +397,14 @@ function App() {
       
       <Toaster />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <LocaleProvider>
+      <AppContent />
+    </LocaleProvider>
   );
 }
 
