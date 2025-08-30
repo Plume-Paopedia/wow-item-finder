@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { WoWItem, mockSources } from '@/lib/data';
 import { ItemSource } from '@/lib/data';
+import { simulatedBlizzardAPI } from '@/lib/simulated-api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -17,9 +18,38 @@ interface ItemDetailProps {
 }
 
 export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
-  if (!item) return null;
+  const [sources, setSources] = useState<ItemSource[]>([]);
+  const [dropSources, setDropSources] = useState<any[]>([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
 
-  const sources = mockSources[item.id] || [];
+  // Load sources when item changes
+  useEffect(() => {
+    if (!item) return;
+
+    const loadSources = async () => {
+      setIsLoadingSources(true);
+      try {
+        // Get drop sources from simulated API
+        const drops = await simulatedBlizzardAPI.getItemDropSources(item.id);
+        setDropSources(drops);
+
+        // Also get mock sources for now
+        const mockSourcesForItem = mockSources[item.id] || [];
+        setSources(mockSourcesForItem);
+      } catch (error) {
+        console.error('Error loading sources:', error);
+        // Fallback to mock sources only
+        setSources(mockSources[item.id] || []);
+        setDropSources([]);
+      } finally {
+        setIsLoadingSources(false);
+      }
+    };
+
+    loadSources();
+  }, [item]);
+
+  if (!item) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -36,8 +66,10 @@ export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
         <Tabs defaultValue="stats" className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-muted/30">
             <TabsTrigger value="stats">Fiche</TabsTrigger>
-            <TabsTrigger value="sources">Sources</TabsTrigger>
-            <TabsTrigger value="links">Liens Wowhead</TabsTrigger>
+            <TabsTrigger value="sources">
+              Sources {isLoadingSources ? '⏳' : `(${sources.length + dropSources.length})`}
+            </TabsTrigger>
+            <TabsTrigger value="links">Liens externes</TabsTrigger>
           </TabsList>
 
           <AnimatePresence mode="wait">
@@ -120,32 +152,76 @@ export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-4"
               >
-                {sources.length > 0 ? (
-                  sources.map((source, index) => (
-                    <Card key={index} className="p-4 bg-muted/20">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-2xl">{getSourceTypeIcon(source.type)}</span>
-                          <div>
-                            <h4 className="font-semibold">{source.name}</h4>
-                            {source.location && (
-                              <p className="text-sm text-muted-foreground">{source.location}</p>
-                            )}
-                            {source.difficulty && (
-                              <p className="text-xs text-accent">{source.difficulty}</p>
-                            )}
-                          </div>
-                        </div>
-                        <Badge className={getSourceTypeBadgeColor(source.type)}>
-                          {source.type}
-                        </Badge>
-                      </div>
-                    </Card>
-                  ))
-                ) : (
+                {isLoadingSources ? (
                   <Card className="p-8 text-center bg-muted/20">
-                    <p className="text-muted-foreground">Aucune source connue pour cet objet.</p>
+                    <div className="animate-spin text-4xl mb-4">⚔️</div>
+                    <p className="text-muted-foreground">Chargement des sources...</p>
                   </Card>
+                ) : (
+                  <>
+                    {/* API Drop Sources */}
+                    {dropSources.length > 0 && (
+                      <>
+                        <h3 className="font-semibold text-lg text-accent">Sources de drop (API Blizzard)</h3>
+                        {dropSources.map((source, index) => (
+                          <Card key={`drop-${index}`} className="p-4 bg-muted/20">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <span className="text-2xl">💀</span>
+                                <div>
+                                  <h4 className="font-semibold">{source.encounterName}</h4>
+                                  <p className="text-sm text-muted-foreground">{source.instanceName}</p>
+                                  {source.difficultyHints && (
+                                    <p className="text-xs text-accent">{source.difficultyHints}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+                                drop
+                              </Badge>
+                            </div>
+                          </Card>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Mock Sources */}
+                    {sources.length > 0 && (
+                      <>
+                        {dropSources.length > 0 && <h3 className="font-semibold text-lg text-accent">Autres sources</h3>}
+                        {sources.map((source, index) => (
+                          <Card key={`mock-${index}`} className="p-4 bg-muted/20">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <span className="text-2xl">{getSourceTypeIcon(source.type)}</span>
+                                <div>
+                                  <h4 className="font-semibold">{source.name}</h4>
+                                  {source.location && (
+                                    <p className="text-sm text-muted-foreground">{source.location}</p>
+                                  )}
+                                  {source.difficulty && (
+                                    <p className="text-xs text-accent">{source.difficulty}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge className={getSourceTypeBadgeColor(source.type)}>
+                                {source.type}
+                              </Badge>
+                            </div>
+                          </Card>
+                        ))}
+                      </>
+                    )}
+
+                    {sources.length === 0 && dropSources.length === 0 && (
+                      <Card className="p-8 text-center bg-muted/20">
+                        <p className="text-muted-foreground">Aucune source connue pour cet objet.</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Consultez les liens externes pour plus d'informations.
+                        </p>
+                      </Card>
+                    )}
+                  </>
                 )}
               </motion.div>
             </TabsContent>
@@ -166,9 +242,9 @@ export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
                         className="w-12 h-12"
                       />
                     </div>
-                    <h4 className="font-semibold text-lg">Liens Wowhead</h4>
+                    <h4 className="font-semibold text-lg">Liens externes</h4>
                     <p className="text-muted-foreground">
-                      Consultez Wowhead pour plus d'informations sur les vendeurs, quêtes et autres sources.
+                      Consultez ces ressources pour plus d'informations sur les vendeurs, quêtes et autres sources.
                     </p>
                     <div className="flex flex-wrap justify-center gap-2">
                       <Button asChild variant="outline">
@@ -177,7 +253,7 @@ export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          Page de l'objet
+                          Wowhead FR
                         </a>
                       </Button>
                       <Button asChild variant="outline">
@@ -186,7 +262,7 @@ export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          Vendu par
+                          Vendeurs
                         </a>
                       </Button>
                       <Button asChild variant="outline">
@@ -195,7 +271,16 @@ export function ItemDetail({ item, isOpen, onClose }: ItemDetailProps) {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          Récompense de quête
+                          Quêtes
+                        </a>
+                      </Button>
+                      <Button asChild variant="outline">
+                        <a 
+                          href={`https://www.wowdb.com/items/${item.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          WoWDB
                         </a>
                       </Button>
                     </div>

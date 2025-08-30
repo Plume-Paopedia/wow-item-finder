@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { WoWItem } from '@/lib/data';
-import { wowheadAPI } from '@/lib/wowhead-api';
+import { simulatedBlizzardAPI } from '@/lib/simulated-api';
+import '@/lib/api-router'; // Initialize API routing
 import { SearchBar } from '@/components/SearchBar';
 import { ItemCard } from '@/components/ItemCard';
 import { ItemDetail } from '@/components/ItemDetail';
@@ -45,14 +46,14 @@ function App() {
 
     setIsLoading(true);
     try {
-      const results = await wowheadAPI.searchItems(query, 100);
+      const results = await simulatedBlizzardAPI.searchItems(query, 100);
       setSearchResults(results);
       setTotalItemsCount(results.length);
-      setIsApiConnected(!wowheadAPI.isInFallbackMode());
+      setIsApiConnected(!simulatedBlizzardAPI.isInFallbackMode());
       
       if (results.length === 0) {
         toast.info(`Aucun objet trouvé pour "${query}"`);
-      } else if (wowheadAPI.isInFallbackMode()) {
+      } else if (simulatedBlizzardAPI.isInFallbackMode()) {
         toast.warning(`${results.length} objet${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''} (mode hors ligne)`);
       } else {
         toast.success(`${results.length} objet${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''}`);
@@ -219,7 +220,7 @@ function App() {
                       Recherche en cours...
                     </h3>
                     <p className="text-muted-foreground">
-                      Exploration de la base de données Wowhead
+                      Exploration de la base de données Blizzard Battle.net
                     </p>
                   </motion.div>
                 )}
