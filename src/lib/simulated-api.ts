@@ -1,4 +1,6 @@
 import { WoWItem, mockItems } from './data';
+import { blizzardAPI } from './blizzard-api';
+import { Locale } from './localization';
 
 // Simulated API responses for Blizzard integration
 export class SimulatedBlizzardAPI {
@@ -17,7 +19,7 @@ export class SimulatedBlizzardAPI {
   }
 
   isInFallbackMode(): boolean {
-    return this.fallbackMode;
+    return this.fallbackMode || blizzardAPI.isInFallbackMode();
   }
 
   // Simulate getting an access token
@@ -28,42 +30,69 @@ export class SimulatedBlizzardAPI {
     }
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Simulate token response
-      this.accessToken = 'simulated_access_token_' + Date.now();
+      // Try to use the real Blizzard API first
+      const token = await (blizzardAPI as any).getAccessToken();
+      this.accessToken = token;
       this.tokenExpiry = Date.now() + 3600000; // 1 hour
       this.fallbackMode = false;
+      return token;
+    } catch (error) {
+      // Fall back to simulation
+      console.warn('Failed to get real access token, using simulated mode');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      this.accessToken = 'simulated_access_token_' + Date.now();
+      this.tokenExpiry = Date.now() + 3600000; // 1 hour
+      this.fallbackMode = true;
       
       return this.accessToken;
-    } catch (error) {
-      console.warn('Failed to get access token, using fallback mode');
-      this.fallbackMode = true;
-      throw error;
     }
   }
 
-  // Simulate searching items using Blizzard API
-  async searchItems(query: string, limit: number = 100): Promise<WoWItem[]> {
+  // Enhanced search that combines multiple data sources
+  async searchItems(query: string, limit: number = 100, locale: Locale = 'fr_FR'): Promise<WoWItem[]> {
     try {
-      // Try to get token first
-      await this.getAccessToken();
+      // First try the enhanced Blizzard API (which has fallback built-in)
+      const results = await blizzardAPI.searchItems(query, limit, locale);
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Also search the mock database for additional coverage
+      const mockResults = this.searchMockItems(query, limit);
       
-      // If we have a token, simulate successful API response
-      if (!this.fallbackMode) {
-        return this.performActualSearch(query, limit);
+      // Combine results and remove duplicates
+      const combinedResults = [...results];
+      const existingIds = new Set(results.map(item => item.id));
+      
+      for (const mockItem of mockResults) {
+        if (!existingIds.has(mockItem.id) && combinedResults.length < limit) {
+          combinedResults.push(mockItem);
+        }
       }
+      
+      this.fallbackMode = blizzardAPI.isInFallbackMode() && combinedResults.length === mockResults.length;
+      
+      return combinedResults.slice(0, limit);
     } catch (error) {
-      console.warn('Blizzard API unavailable, using fallback data');
+      console.warn('Error in comprehensive search, using mock data only:', error);
       this.fallbackMode = true;
+      return this.searchMockItems(query, limit);
+    }
+  }
+
+  // Search within the mock database
+  private searchMockItems(query: string, limit: number): WoWItem[] {
+    if (!query.trim()) {
+      return mockItems.slice(0, limit);
     }
 
-    // Fallback to local search
-    return this.performFallbackSearch(query, limit);
+    const searchLower = query.toLowerCase();
+    return mockItems
+      .filter(item => 
+        item.name.toLowerCase().includes(searchLower) ||
+        item.item_class.toLowerCase().includes(searchLower) ||
+        item.item_subclass.toLowerCase().includes(searchLower) ||
+        item.description?.toLowerCase().includes(searchLower)
+      )
+      .slice(0, limit);
   }
 
   // Simulate getting item details
