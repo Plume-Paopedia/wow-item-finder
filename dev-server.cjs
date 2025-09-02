@@ -126,7 +126,7 @@ app.get('/api/items/search', async (req, res) => {
     console.log(`✅ Blizzard API search successful: ${items.length} items found for "${query}"`);
     res.json({ 
       items: items.slice(0, parseInt(limit)),
-      total: data.page?.resultCountTotal || items.length,
+      total: (data.page && data.page.resultCountTotal) || items.length,
       source: 'blizzard_api'
     });
 
@@ -171,7 +171,7 @@ app.get('/api/items/:id', async (req, res) => {
     const data = await response.json();
     
     // Transform to our format
-    const quality = mapBlizzardQuality(data.quality?.type || 'COMMON');
+    const quality = mapBlizzardQuality((data.quality && data.quality.type) || 'COMMON');
     
     const item = {
       id: data.id,
@@ -179,10 +179,10 @@ app.get('/api/items/:id', async (req, res) => {
       quality,
       item_level: data.level || 1,
       required_level: data.required_level || 1,
-      item_class: data.item_class?.name || 'Miscellaneous',
-      item_subclass: data.item_subclass?.name || 'Other',
+      item_class: (data.item_class && data.item_class.name) || 'Miscellaneous',
+      item_subclass: (data.item_subclass && data.item_subclass.name) || 'Other',
       icon: `https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg`,
-      description: data.preview_item?.binding?.name || '',
+      description: (data.preview_item && data.preview_item.binding && data.preview_item.binding.name) || '',
       stats: extractItemStats(data),
       blizzard_data: data
     };
@@ -228,9 +228,9 @@ function mapBlizzardQuality(blizzardQuality) {
 function extractItemStats(blizzardItem) {
   const stats = [];
   
-  if (blizzardItem.preview_item?.stats) {
+  if (blizzardItem.preview_item && blizzardItem.preview_item.stats) {
     blizzardItem.preview_item.stats.forEach(stat => {
-      if (stat.type?.name && stat.value) {
+      if (stat.type && stat.type.name && stat.value) {
         stats.push({
           name: stat.type.name,
           value: stat.value
