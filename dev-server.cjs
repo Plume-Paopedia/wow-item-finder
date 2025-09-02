@@ -6,6 +6,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Import mock data for fallback
+const { mockItems, searchMockItems } = require('./src/lib/data-cjs.cjs');
+
 // Blizzard API Configuration
 const BLIZZARD_CONFIG = {
   CLIENT_ID: '88495238ffe246c5a3f73cc731065b91',
@@ -17,6 +20,7 @@ const BLIZZARD_CONFIG = {
 
 let accessToken = null;
 let tokenExpiry = 0;
+let apiAvailable = false; // Track if API is available
 
 // Get Blizzard access token
 async function getBlizzardToken() {
@@ -26,24 +30,31 @@ async function getBlizzardToken() {
 
   const credentials = Buffer.from(`${BLIZZARD_CONFIG.CLIENT_ID}:${BLIZZARD_CONFIG.CLIENT_SECRET}`).toString('base64');
   
-  const response = await fetch(BLIZZARD_CONFIG.AUTH_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  });
+  try {
+    const response = await fetch(BLIZZARD_CONFIG.AUTH_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+    });
 
-  if (!response.ok) {
-    throw new Error(`OAuth error: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`OAuth error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    accessToken = data.access_token;
+    tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+    apiAvailable = true;
+    
+    return accessToken;
+  } catch (error) {
+    console.warn('Blizzard API not available, using mock data:', error.message);
+    apiAvailable = false;
+    throw error;
   }
-
-  const data = await response.json();
-  accessToken = data.access_token;
-  tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-  
-  return accessToken;
 }
 
 // Token endpoint
@@ -53,20 +64,26 @@ app.get('/api/blizzard/token', async (req, res) => {
     res.json({ access_token: token, expires_in: 3600 });
   } catch (error) {
     console.error('Token error:', error);
-    res.status(500).json({ error: 'Failed to get access token' });
+    // Return a mock token to indicate fallback mode
+    res.json({ 
+      access_token: 'mock_token_' + Date.now(), 
+      expires_in: 3600,
+      fallback: true 
+    });
   }
 });
 
 // Item search endpoint
 app.get('/api/items/search', async (req, res) => {
-  try {
-    const { q: query, limit = 100, locale = 'fr_FR' } = req.query;
-    
-    if (!query || query.trim().length === 0) {
-      res.status(400).json({ error: 'Query parameter "q" is required' });
-      return;
-    }
+  const { q: query, limit = 100, locale = 'fr_FR' } = req.query;
+  
+  if (!query || query.trim().length === 0) {
+    res.status(400).json({ error: 'Query parameter "q" is required' });
+    return;
+  }
 
+  // Try Blizzard API first, fall back to mock data if it fails
+  try {
     const token = await getBlizzardToken();
     
     const searchUrl = `${BLIZZARD_CONFIG.API_BASE}/data/wow/search/item`;
@@ -106,21 +123,36 @@ app.get('/api/items/search', async (req, res) => {
       blizzard_data: result.data
     }));
 
+    console.log(`✅ Blizzard API search successful: ${items.length} items found for "${query}"`);
     res.json({ 
       items: items.slice(0, parseInt(limit)),
-      total: data.page?.resultCountTotal || items.length
+      total: data.page?.resultCountTotal || items.length,
+      source: 'blizzard_api'
     });
+
   } catch (error) {
-    console.error('Search error:', error);
-    res.status(500).json({ error: 'Search failed', fallback: true });
+    console.log(`⚠️ Blizzard API failed, using mock data for search: "${query}"`);
+    
+    // Fall back to mock data search
+    const mockResults = searchMockItems(query, parseInt(limit), locale);
+    console.log(`📦 Mock search results: Found ${mockResults.length} items for "${query}"`);
+    
+    res.json({ 
+      items: mockResults,
+      total: mockResults.length,
+      source: 'mock_data',
+      fallback: true
+    });
   }
 });
 
 // Item details endpoint
 app.get('/api/items/:id', async (req, res) => {
+  const { id } = req.params;
+  const { locale = 'fr_FR' } = req.query;
+  
+  // Try Blizzard API first, fall back to mock data if it fails
   try {
-    const { id } = req.params;
-    const { locale = 'fr_FR' } = req.query;
     const token = await getBlizzardToken();
     
     const itemUrl = `${BLIZZARD_CONFIG.API_BASE}/data/wow/item/${id}`;
@@ -155,10 +187,27 @@ app.get('/api/items/:id', async (req, res) => {
       blizzard_data: data
     };
 
-    res.json({ item });
+    console.log(`✅ Blizzard API item details successful for item ${id}`);
+    res.json({ item, source: 'blizzard_api' });
+
   } catch (error) {
-    console.error('Item details error:', error);
-    res.status(500).json({ error: 'Failed to get item details' });
+    console.log(`⚠️ Blizzard API failed, using mock data for item ${id}`);
+    
+    // Fall back to mock data
+    const mockItem = mockItems.find(item => item.id === parseInt(id));
+    
+    if (mockItem) {
+      res.json({ 
+        item: mockItem,
+        source: 'mock_data',
+        fallback: true
+      });
+    } else {
+      res.status(404).json({ 
+        error: 'Item not found',
+        source: 'mock_data'
+      });
+    }
   }
 });
 
