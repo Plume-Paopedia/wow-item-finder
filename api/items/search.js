@@ -23,11 +23,32 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Get access token first
-    const tokenResponse = await fetch(`${req.headers.host?.includes('localhost') ? 'http' : 'https'}://${req.headers.host}/api/blizzard/token`);
-    
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to get access token');
+    // Try to get access token, but handle failures gracefully
+    let access_token;
+    try {
+      const tokenResponse = await fetch(`${req.headers.host?.includes('localhost') ? 'http' : 'https'}://${req.headers.host}/api/blizzard/token`);
+      
+      if (!tokenResponse.ok) {
+        throw new Error('Failed to get access token');
+      }
+      
+      const tokenData = await tokenResponse.json();
+      access_token = tokenData.access_token;
+    } catch (tokenError) {
+      console.warn('Blizzard API token unavailable, using fallback data:', tokenError.message);
+      // Return mock search results when token fails
+      const mockResults = [
+        { id: 1, name: "Épée du roi-liche", quality: "legendary", item_level: 284, required_level: 80, item_class: "Arme", item_subclass: "Épée à deux mains" },
+        { id: 2, name: "Frostmourne", quality: "legendary", item_level: 350, required_level: 80, item_class: "Arme", item_subclass: "Épée à deux mains" },
+        { id: 3, name: "Thunderfury", quality: "legendary", item_level: 230, required_level: 60, item_class: "Arme", item_subclass: "Épée à une main" }
+      ].filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+      
+      res.status(200).json({
+        items: mockResults.slice(0, parseInt(limit)),
+        total: mockResults.length,
+        fallback: true
+      });
+      return;
     }
 
     const { access_token } = await tokenResponse.json();

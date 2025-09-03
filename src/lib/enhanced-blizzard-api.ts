@@ -49,25 +49,32 @@ class EnhancedBlizzardAPI {
 
     if (this.blizzardApiEnabled) {
       try {
+        console.log('🔑 Trying to get token from server /api/blizzard/token');
         const response = await fetch('/api/blizzard/token');
+        console.log('🔑 Token response:', response.status, response.ok);
         if (response.ok) {
           const data = await response.json();
+          console.log('🔑 Token data:', data);
           this.accessToken = data.access_token;
           this.tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-          this.fallbackMode = false;
+          // Keep using server API even if it's returning mock data
+          // The server handles the Blizzard API fallback, we just use the server
+          console.log('🔑 Server token acquired, using server API');
           return this.accessToken;
         }
       } catch (error) {
-        console.warn('Failed to get real token, falling back to simulation');
+        console.warn('🔑 Failed to get token from server, falling back to simulation:', error);
+        this.blizzardApiEnabled = false;
         this.fallbackMode = true;
       }
     }
 
-    // Simulate token generation
+    // Simulate token generation only if server is not available
     await new Promise(resolve => setTimeout(resolve, 200));
     this.accessToken = 'simulated_token_' + Date.now();
     this.tokenExpiry = Date.now() + 3600000;
     this.fallbackMode = true;
+    console.log('🔑 Using simulated token:', this.accessToken);
     return this.accessToken;
   }
 
@@ -75,23 +82,35 @@ class EnhancedBlizzardAPI {
    * Search for items with multi-language support
    */
   async searchItems(query: string, limit: number = 100, locale: Locale = DEFAULT_LOCALE): Promise<WoWItem[]> {
+    console.log('🔍 Search called:', { query, limit, locale, blizzardApiEnabled: this.blizzardApiEnabled, fallbackMode: this.fallbackMode });
+    
     await this.getAccessToken(); // Ensure we have a token
+    
+    console.log('🔑 After getAccessToken:', { blizzardApiEnabled: this.blizzardApiEnabled, fallbackMode: this.fallbackMode });
 
-    if (this.blizzardApiEnabled && !this.fallbackMode) {
+    if (this.blizzardApiEnabled) {
       try {
-        // Try real Blizzard API first
-        const response = await fetch(`/api/items/search?q=${encodeURIComponent(query)}&limit=${limit}&locale=${locale}`);
+        // Use server API (which handles Blizzard API fallback internally)
+        const url = `/api/items/search?q=${encodeURIComponent(query)}&limit=${limit}&locale=${locale}`;
+        console.log('🌐 Using server API:', url);
+        const response = await fetch(url);
+        console.log('📡 Server response:', response.status, response.ok);
         if (response.ok) {
           const data = await response.json();
+          console.log('✅ Server API success:', data.items?.length || 0, 'items found');
           return data.items || [];
+        } else {
+          throw new Error(`Server responded with ${response.status}`);
         }
       } catch (error) {
-        console.warn('Real API failed, falling back to simulation');
+        console.warn('❌ Server API failed, falling back to local simulation:', error);
+        this.blizzardApiEnabled = false;
         this.fallbackMode = true;
       }
     }
 
-    // Enhanced simulation with multi-language support
+    // Enhanced simulation with multi-language support (only when server is unavailable)
+    console.log('🔄 Using local simulated search');
     return this.searchItemsSimulated(query, limit, locale);
   }
 
@@ -200,15 +219,18 @@ class EnhancedBlizzardAPI {
   async getItemDetails(itemId: number, locale: Locale = DEFAULT_LOCALE): Promise<WoWItem | null> {
     await this.getAccessToken();
 
-    if (this.blizzardApiEnabled && !this.fallbackMode) {
+    if (this.blizzardApiEnabled) {
       try {
         const response = await fetch(`/api/items/${itemId}?locale=${locale}`);
         if (response.ok) {
           const data = await response.json();
           return data.item;
+        } else {
+          throw new Error(`Server responded with ${response.status}`);
         }
       } catch (error) {
-        console.warn('Real API failed for item details, falling back to simulation');
+        console.warn('Server API failed for item details, falling back to simulation');
+        this.blizzardApiEnabled = false;
         this.fallbackMode = true;
       }
     }
@@ -313,8 +335,8 @@ class EnhancedBlizzardAPI {
    */
   getConnectionStatus() {
     return {
-      isConnected: !this.fallbackMode,
-      mode: this.fallbackMode ? 'Enhanced Simulation' : 'Blizzard API',
+      isConnected: this.blizzardApiEnabled && !this.fallbackMode,
+      mode: this.blizzardApiEnabled ? 'Server API (with Blizzard fallback)' : 'Local Simulation',
       itemCount: mockItems.length,
       lastUpdate: new Date().toISOString(),
       features: {
